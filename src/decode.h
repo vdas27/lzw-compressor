@@ -36,7 +36,7 @@ array_entry *initialize_string_table_array(int max_bit_length);
 void insert_entry(array_entry *st, signed int code, signed int prefix, short C, char active);
 
 //reads code from input in ascii or bits
-signed int getcode();
+signed int getcode(reader *r);
 
 //print string table in DBG.decode
 //p argument to signal if printing a table before it is pruned
