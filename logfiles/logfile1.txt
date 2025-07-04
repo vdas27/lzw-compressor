@@ -1,0 +1,225 @@
+Stage 1:
+
+ENCODE:
+
+I decided to go with the suggestion of using a chained hash to store my string table
+to encode. I created the following functions and structs for my table:
+
+-Stuct entry (defined in encode.h)
+    -This struct is what the table stores. It contains the code, prefix, character,
+    and a pointer to the next entry in the hash bucket.
+
+-Struct hash_table (defined in encode.h)
+    -This is the struct that makes up the string table itself. It contains
+    the following:
+    -the hash function: For my hashing function, I stuck with the function provided
+    in the documentation.
+    -buckets: This is a two dimensional array of entry structs, and they serve as
+    the buckets that hold the hashed entries.
+    -n_buckets: this is a unsigned 32 bit integer that tells the amount of buckets
+    per hash table. for the number of buckets I arbitrarily picked the
+    number 31. I may dynamically tweak this number in the future based on what the max bit size is.
+    -For when I have to implement pruning, I might add an additional element, char used,
+    which is a boolean byte which signifies if the entry has been referenced as a prefix
+    for another function, so that I will be able to easily transport used prefixes into
+    the pruned table.
+
+-entry *e_cons(signed int pre, signed int code, short C, entry *n)
+    -a simple function which takes in the different elements of the entry struct
+    and then allocates in the heap a new struct with these values stored.
+
+-hash_table *ht_new(u_int32_t n, u_int64_t (*h)(short, signed int))
+    -another constructor function which makes a new hash table stored on the heap
+    with the values given by the arguments. All of the buckets are initialized as
+    NULL pointers.
+
+-u_int64_t C_pref_hash(short C, signed int pref)
+    -the implementation of the document's hash function:
+        (((signed int)(pref) << CHAR_BIT) | (unsigned)(C))
+
+-void entry_insert(hash_table *ht, entry *e)
+    -inserts a given entry into the hash table. Hash code created based on the
+    entry's prefix and character.
+
+-signed int code_lookup(hash_table *ht, signed int pref, short C)
+    -checks to see if an entry exists already in the table. Hashes the prefix
+    and character given, and looks through the bucket for matching prefix and character.
+    -It returns -1 if the entry does not exist.
+
+-void free_entry(entry *e)
+    -Free entry and all of the subsequent entries linked through its next pointer.
+
+-void free_ht(hash_table *ht)
+    -Frees all of the buckets in the hash table using the free_entry function,
+    then frees the bucket array, then frees the hash table struct itself.
+
+-hash_table *intialize_string_table()
+    -creates the initial string table with the ascii values 0-255. Uses a for loop 
+    to create each entry and then insert into the empty hash table. Returns the hash
+    table. Each ascii entry in the table was assigned its ascii number as its
+    code and prefix as 0 (since these are the primary dictionary elements).
+
+-void ht_balance(hash_table *ht)
+    -Debugging function I made to check the number of entries per bucket. Good way
+    to make sure the hash function is evenly distributing the entries across the 
+    buckets. In my testing of this function it did a sufficient job.
+
+I then started implementing the logic for the encode function. I initialize the characters
+C and K, and then new_code, max_code, and prefix, all of which are int or signed int types.
+New code starts at 256 since that is what the code of the newest entry will be,
+max_code is the maximum possible code number, based off the max bits number. 
+Prefix is initialized to -1, which I chose to use to represent an empty entry. 
+Using the getchar() function I assign K to the read off the characters
+provided in the input. K and the current prefix value is sent into the hash search
+to check for existing entries. If the function returns a  value >= 0, then
+the prefix value is set to that code value, and then C=K, and K reads the next character.
+If -1 is returned and the max number of codes hasn't been used up, then a new entry
+is added to the table with the current prefix value, the char stored in K, and the new_code
+value. new_code is increased by one after every new entry is added. The current prefix
+value is then printed to the standard input, and the current prefix value gets set to
+whatever the ascii code of the char stored in K is. C=K and the function moves onto 
+the next character. After testing out this code I found that it worked out well,
+so my next step was to create functions for printing out the string tables for 
+debugging purposes.
+
+Print functions:
+I found that printing the table would be difficult for a hash table since the entries
+are not ordered sequentially based on their codes. I knew that each bucket is structured
+like a linked list, so if I could combine each of the buckets, and then a apply
+a sorting function to this linked list of all the entries, I would then be able to
+move through the linked list and print each entry sequentially. I looked back
+at my notes from CS143 and found an implementation of quicksort for linked lists,
+the fastest comparison based sort with the complexity O(n log n). I implemented
+quicksort using the following functions:
+
+-entry *filterLT(signed int p, entry *e)
+-entry *filterGE(signed int p, entry *e)
+-entry *quicksort(entry *e)
+    -the first two functions are utilized by quicksort, and combine to make up
+    the algorithm. Each function creates a new linked list, rather than sorting
+    in place, in order to not mess up the hash_table structure.
+
+I then had to design the printing function:
+
+-void print_ht(hash_table *ht):
+    This takes in the string table and then writes it onto the document DBG.encode.
+    It works by going through each bucket in the table with a for loop, shuffling to the last entry
+    on the linked list, and pointing that entry to the first entry of the next bucket.
+    At first I was getting segmentation faults, and I found it was because I had not initialized
+    the i in the loop to u_int32_t (the type of n_buckets) so it wouldn't be able to 
+    properly access elements in the bucket array.
+    Once this linked list of all the entries is created, it is inserted into the quicksort
+    function, creating a sorted linked list of the string table. Then, the function
+    goes through each entry of the list, and prints out the code, prefix and character
+    to DBG.decode, using fprintf. The list is freed after all the entries have
+    been printed.
+
+The last step for printing was to check for the DBG env variable. I used getenv,
+which I figured out how to use using https://www.tutorialspoint.com/c_standard_library/c_function_getenv.htm,
+to see if DBG has a value. I then used atoi to convert the value into an integer, and
+created an if statement to call the print_ht function.
+
+DECODE:
+
+For decode, I decided that using a hash table would not work for the string table
+since you cannot directly call upon an entry with just its code. Instead I decided
+to use an array holding entry structs to implement the string table. The implementation
+of the array was much simpler than the hash table. I created the following structs
+and functions for the array:
+
+-struct array_entry (defined in decode.h)
+    -Similar to the entry struct from the hash, this struct holds the prefix and
+    character of the entry. It does not hold the code, since that will be given
+    from the index of the struct in the array. It does not have a next pointer,
+    since this is not a linked list. It contains the element char active, which
+    will be used to check if the code has a valid entry.
+
+-array_entry *intialize_string_table_array(int max_bit_length)
+    -This initializes the string table in an array, containing ascii values in 
+    codes 0-255. The data is stored in one large array, which holds entries.
+    I decided to store the struct itself rather than pointers so that it would
+    be more straightforward to access the data in the array. The size of the array
+    is based off of the max bit length. Since in Stage 1, the max bits is always
+    12, that means the array always has 4096 entries in this version.
+
+-void insert_entry(array_entry *st, signed int code, signed int prefix, short C)
+    -This inserts a new entry into the string table, with the values given. The code
+    is given based off of an incrementing value stored in the decode function, which
+    increases every time this function is called.
+
+Once I created the string table code, I had to make a stack function for storing
+K values in decode, which was given based on the pseudo code in the document. I
+created the following for the stack:
+
+-struct Kstack (defined in decode.h)
+    -holds a character value and a pointer to the stack entry below it.
+    -entries are stored in the heap.
+
+-Kstack *create_stack(short C)
+    -creates the bottom entry of the stack stored on the heap.
+    -returns pointer to this new stack.
+
+-Kstack *pop(Kstack *k)
+    -pops the value held at the top of the stack by outputting the character.
+    -returns a pointer to the new top of the stack
+
+-Kstack *push(Kstack *k, short C)
+    -pushes a new value to the top of the stack based on the argument. Returns
+    a pointer to the new top of the stack.
+
+Now that I had made the Kstack and string table, I was able to make the code
+to decode. new_code is initialized to 256, since that will be the first non ascii
+entry. Max_code is set to 2^(max_bits), so in this stage 4096.
+
+All variables related to C (oldC, C, newC) are of type signed int, since they
+were related to the code and prefix of the entries. K variables (K, finalK) are of type char,
+since they are what will be outputted.
+
+I followed the psuedo code, however I had to put in the following to get the code
+to work correctly. oldC was initialized as -1, the empty value.
+In order to check if a code has a valid entry, I checked the active element of 
+the struct at the code location. If there is no entry for the code, then a Kstack
+is created with the finalK value from the previous loop. Also, before inserting an
+entry, the value of new_code is compared to the max_code value, so that a segmentation
+fault doesn't occur from trying to access an element outside the array. new_code
+is incremented using new_code++ everytime an insert is called.
+
+Once I had all of the decode down, I was having trouble figuring out how to
+properly read from the stdin. Originally, I was using getchar(), however then the
+decode would just output the same input from encode, since it would just read the
+ascii values of the codes. I figured out that I would have to create my own
+getcode() function. Since in this stage, each encode code is outputted on a single 
+line, I knew that fscanf would work for reading each code (this approach probably
+won't work once the output comes in bits, but it will work for this stage).
+I wasn't sure how to communicate that EOF had been reached, but when I looked at
+documentation for fscanf at https://www.tutorialspoint.com/c_standard_library/c_function_fscanf.htm
+I found out that fscanf will return -1 if the end of the file has been reached.
+Therefore, getcode() can use fscanf to read the lines and return the code so long
+as fscanf returns 1. However, once fscanf returns -1, then getcode() returns EOF,
+signalling for the while loop to close.
+
+Lastly, I created a print function for the string table based on the DBG env variable.
+This print function was much more straightforward than the hash print. 
+
+-void print_st(array_entry *st)
+    - sequentially prints the code, prefix, and character of each element in the array that
+    has a non-zero active element.
+
+I used the same getenv method to call the print function based off DBG as I did for 
+the encode function.
+
+
+Problems I ran into:
+At first I was using 0 as the empty value, however this wasn't working whenever 
+I tried to encode binary files since they included null terminator characters, which holds the
+ascii value 0. This would cause conflicts where new entries that had the null terminator as a prefix
+would conflict with preexisting ascii table entries. Instead I decided to make code be represented by 
+signed ints instead of unsigned longs. Since there are 32 bits in a signed int, there is enough to have a positive value for
+every code possible under the max bit limit (20) and still include negative values, such as -1,
+for a special character such as -1. After I made this change, I was able to successfully encode and
+decode binary files without messing up the rest of the code.
+
+I also ran into an issue where getchar() was returning large non ascii values, which would mess up the process
+of finding the character associated with inputted char. I found out that this was because I was
+casting getchar() to the type char, when it is designed to return an int, thus messing up
+the return value. I fixed this by making C and K in encode to be of type int rather than char.

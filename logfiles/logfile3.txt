@@ -1,0 +1,86 @@
+To start things off, I had to fix my issues with pruning from the last stage.
+I realized my issue was that the relative ordering of operations was messed up
+between encode and decode. I changed their orderings to the following:
+ENCODE:         DECODE:
+READ STRING     READ CODE
+LOOKUP CODE     LOOKUP CODE
+PRINT CODE      PRINT STRING
+PRUNE           ADD ENTRY
+ADD ENTRY       PRUNE
+
+This ordering prevents encode from adding an entry to the dictionary before a prune,
+stopping decode from being able to detect it.
+
+I also fixed an issue where DBG was crashing my code if it was called too many times,
+because I would open the dump file each time the function was called, but
+not ever close it, causing a segmentation fault after enough calls.
+
+ENCODE:
+
+I created a struct, bits_info which stores the 1. (local_max) current number of bits needed
+to print a current code 2. (marker) an int which tells how many bits are used in the 
+buffer char 3. (buffer) a char which stores bits that needed to be printed in the next
+output.
+
+I then created a bit_print function which takes in a code to print and a bits_info
+struct. The function loads any leftover bits from buffer into a char and then puts
+the rest of the bits into a series of outputted chars. If by the end there
+are leftover bits (< 8 bits), they then go into the buffer element of the struct.
+At the end of the encode program, if there are any bits left in buffer, the code
+then prints out the buffer code with (redundant) trailing zeros.
+
+I then made it so that the encode function would check after adding a new entry
+to see if the amount of bits needed to print a code should go up. If the code reaches
+(0x01 << current amount of bit needed), then I increase the amount of bits needed
+to print by one.
+
+Also, if a prune happens, the value of new_code is checked to see how many
+bits is needed to print that value, and the amount bits is then switched down
+to that value.
+
+DECODE:
+
+I created the same struct in decode, and the same function to read the bytes, just
+in reverse to how the encode one works. 
+
+I have it so that after a new entry is added, if the code reaches
+((0x01 << current amount of bit needed) - 1) then the amount of bits it reads is 
+increased by one. In decode the value needed to increase bit reading is one less
+than in encode to account for the lag of decode behind encode.
+
+I used the same strategy after pruning in decode to update that amount of 
+reading bits.
+
+PROBLEMS:
+
+I ran into a problem where the amount of bits printed/read was not syncing 
+between encode and decode. I fixed this issue by making it so that 
+decode increases bits read when it is one less than the code needed for
+the next number of bits, while encode does it on the code which needs
+one more bit (e.g. 512 for 10 bits). I came to this conclusion because
+I had faced a similar problem with syncing prunes. The decode operates one
+cycle behind the encode, so I accounted for this by making it switch
+when  is one less than the code needed for the next number of bits.
+
+I was running into an issue where my decode couldn't read larger bit numbers.
+I realized this was coming from my read function, from the following for loop: 
+
+while (m > 8) {
+    if ((D = getchar()) == EOF) return EOF;
+    m -= 8;
+    C = C ^ D;
+    C = C << m;
+}
+
+m is the amount of bits left to read, and C is the previous buffer entry. My issue
+was that I performed an XOR, C = C ^ D, without shifting D up in order to put the 
+bits in the right place. So I switched the code to this:
+
+while (m > 8) {
+    if ((D = getchar()) == EOF) return EOF;
+    m -= 8;
+    D = D << m;
+    C = C ^ D;
+}
+
+After implementing this change, my code started working as expected.

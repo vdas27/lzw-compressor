@@ -1,0 +1,54 @@
+STAGE 2:
+
+ENCODE:
+
+For encode I made a couple of tweaks to my code. To begin with, I changed the printing
+system, because I found that when using quicksort, it would sometimes cause random
+segmentation faults. Instead, I used a more brute force search to find each non-ascii
+created code, and then printed it. I use the following function to implement this:
+
+entry *code_search(hash_table *ht, signed int code)
+
+I split my pruning for encode into two phases: 1. Leading up to Prune 2. Pruning;
+
+1. For leading up to the pruning, I created a buffer list the size of the max code,
+minus the ascii values (since the ascii values are reused in every table). Every
+time I added a new entry to the table, I marked marked the array at the index of the prefix
+to the entry being inserted. 
+
+hash_table *enprune(hash_table *ht, signed int *prune_valid, signed int max, signed int *new_code, signed int *nprefix)
+
+2. Once the table is full, the prune function iterates through this
+list, and if the index value has been marked, it assigns a new code value at
+that point in the array. Now, everytime a code from the old value is used as the
+index in the buffer array, the array either calls up 0, meaning the code shouldn't
+be pruned, or calls the what the new code value of the entry should be after it is pruned.
+This method helps keep the relative order of the entries as well. I put in the new_code and
+prefix values from the regular encode function as out-parameters so that they are updated
+with the new values from the new table, since I was having issues earlier where 
+the new_code was carrying on from where it had stopped pre-prune, which caused the 
+program to keep pruning after each input.
+
+DECODE:
+
+My method for pruning was pretty similar to the encode. I used the 
+.active element in my entry struct to signal whether an entry should be pruned.
+The value of .active is set to 2 if the code had been used as a prefix in a new
+entry insert.
+
+Once the table is full, the prune function iterates through the table and checks
+the value of the active element. If it is 2, it copies the entry into the new prune
+table. Similarly to encode, it creates a list of updated_codes to keep the relative
+ordering of entries the same. It calls back on the updated_codes list if an entry
+has a non-ascii prefix, therefore keeping the new table lined up correctly.
+
+It also takes in OldC and new_code as out-parameters for the same reasons mentioned
+in encode.
+
+PARSING COMMAND LINES:
+
+My execution of checking for flags was very simple. If argc is greater than one,
+it compares the elements in argv with the string constants "-m" and "-p". These
+If "-p" is detected then encode is given a variable of 1 for the pruning argument.
+If "-m" is detected then the element argv[i+1] is read and given to the encode function,
+and i  in the loop is iterated by two, so that it does not read the max bit number twice.
