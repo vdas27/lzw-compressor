@@ -6,13 +6,13 @@ Command line LZW file compressor built using C. Project completed November 2024.
 Navigate to the src directory.<br>
 Run `make`
 ### Compression
-`cat file_name | ./encode -m (integer between 9 and 20) -p (if pruning wanted)`
+`cat file_name | ./encode -m (integer between 9 and 20) -p (if pruning wanted) >> compression_file`
 - -m (optional)
   - choose number of bits printed per entry. Default set to 12
 - -p (optional)
   - Enable table pruning
 ### Decompression
-`cat compressed_file | ./decode`
+`cat compression_file | ./decode >> output_file`
 ## Features
 **Pruning:** In the original algorithm, when the table reaches max additional entries, no new entries are added from that point on.
 Pruning allows the table to be dynamically resized by removing non frequent substrings from the table when the table is full.
